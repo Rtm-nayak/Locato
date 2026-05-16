@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { collection, doc, onSnapshot, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
+import * as api from '../api'
 import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/LoadingSpinner'
 
@@ -91,7 +92,11 @@ export default function AuthorityDashboard() {
     if (!db) return
     setUpdatingId(id)
     try {
-      await updateDoc(doc(db, 'alerts', id), { status })
+      if (import.meta.env.VITE_API_BASE) {
+        await api.updateAlertStatus(id, status)
+      } else {
+        await updateDoc(doc(db, 'alerts', id), { status })
+      }
       toast.success('Status updated')
     } catch (err) {
       console.error(err)

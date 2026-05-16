@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { collection, getDocs } from 'firebase/firestore'
 import { db, isFirebaseConfigured } from '../firebase'
+import * as api from '../api'
 
 function tokenize(text) {
   return (text || '')
@@ -46,19 +47,30 @@ export default function MatchAlert() {
     }
     setLoading(true)
     try {
-      const snap = await getDocs(collection(db, 'registrations'))
-      const regs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-      const scored = regs
-        .map((r) => ({ reg: r, score: scoreRegistration(text, r) }))
-        .filter((x) => x.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 8)
-      setResults(scored.map((x) => x.reg))
-      if (scored.length === 0) {
-        toast('No strong matches yet — try more distinctive keywords', {
-          icon: 'ℹ️',
-        })
-      }
+        if (import.meta.env.VITE_API_BASE) {
+          const res = await api.matchSearch(text)
+          const data = res?.data || []
+          setResults(data.map((d) => d.registration))
+          if (!data.length) {
+            toast('No strong matches yet — try more distinctive keywords', {
+              icon: 'ℹ️',
+            })
+          }
+        } else {
+          const snap = await getDocs(collection(db, 'registrations'))
+          const regs = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          const scored = regs
+            .map((r) => ({ reg: r, score: scoreRegistration(text, r) }))
+            .filter((x) => x.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 8)
+          setResults(scored.map((x) => x.reg))
+          if (scored.length === 0) {
+            toast('No strong matches yet — try more distinctive keywords', {
+              icon: 'ℹ️',
+            })
+          }
+        }
     } catch (err) {
       console.error(err)
       toast.error('Could not search registrations')

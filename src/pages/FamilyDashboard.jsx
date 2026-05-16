@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '../firebase'
+import * as api from '../api'
 import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/LoadingSpinner'
 
@@ -76,28 +77,42 @@ export default function FamilyDashboard() {
     if (!user || !db) return
     setSubmittingReg(true)
     try {
-      let photoURL = ''
-      if (photoFile && storage) {
-        const objectRef = ref(
-          storage,
-          `registrations/${user.uid}/${Date.now()}-${photoFile.name}`,
-        )
-        await uploadBytes(objectRef, photoFile)
-        photoURL = await getDownloadURL(objectRef)
-      }
+        let photoURL = ''
+        if (photoFile && storage) {
+          const objectRef = ref(
+            storage,
+            `registrations/${user.uid}/${Date.now()}-${photoFile.name}`,
+          )
+          await uploadBytes(objectRef, photoFile)
+          photoURL = await getDownloadURL(objectRef)
+        }
 
-      await addDoc(collection(db, 'registrations'), {
-        uid: user.uid,
-        name: form.name.trim(),
-        age: form.age ? Number(form.age) : null,
-        gender: form.gender.trim(),
-        description: form.description.trim(),
-        photoURL,
-        emergencyContact: form.emergencyContact.trim(),
-        eventName: form.eventName.trim(),
-        createdAt: serverTimestamp(),
-      })
-      toast.success('Family member registered')
+        if (import.meta.env.VITE_API_BASE) {
+          await api.addRegistration({
+            uid: user.uid,
+            name: form.name.trim(),
+            age: form.age ? Number(form.age) : null,
+            gender: form.gender.trim(),
+            description: form.description.trim(),
+            photoURL,
+            emergencyContact: form.emergencyContact.trim(),
+            eventName: form.eventName.trim(),
+          })
+          toast.success('Family member registered (via API)')
+        } else {
+          await addDoc(collection(db, 'registrations'), {
+            uid: user.uid,
+            name: form.name.trim(),
+            age: form.age ? Number(form.age) : null,
+            gender: form.gender.trim(),
+            description: form.description.trim(),
+            photoURL,
+            emergencyContact: form.emergencyContact.trim(),
+            eventName: form.eventName.trim(),
+            createdAt: serverTimestamp(),
+          })
+          toast.success('Family member registered')
+        }
       setForm(emptyForm)
       setPhotoFile(null)
     } catch (err) {
@@ -132,7 +147,6 @@ export default function FamilyDashboard() {
         reportedBy: user.uid,
         reportedByName: profile?.name || user.email || 'Family',
         status: 'missing',
-        timestamp: serverTimestamp(),
       }
 
       if (alertMode === 'member') {
@@ -141,25 +155,29 @@ export default function FamilyDashboard() {
           setAlertSubmitting(false)
           return
         }
-        await addDoc(collection(db, 'alerts'), {
+        const payload = {
           ...base,
           registrationId: selectedRegistration.id,
           description:
-            selectedRegistration.description ||
-            `Missing: ${selectedRegistration.name}`,
+            selectedRegistration.description || `Missing: ${selectedRegistration.name}`,
           personName: selectedRegistration.name,
           age: selectedRegistration.age ?? null,
           gender: selectedRegistration.gender || '',
           emergencyContact: selectedRegistration.emergencyContact || '',
           photoURL: selectedRegistration.photoURL || '',
-        })
+        }
+        if (import.meta.env.VITE_API_BASE) {
+          await api.reportAlert(payload)
+        } else {
+          await addDoc(collection(db, 'alerts'), { ...payload, timestamp: serverTimestamp() })
+        }
       } else {
         if (!manualName.trim() || !manualDescription.trim()) {
           toast.error('Name and description are required for a manual alert')
           setAlertSubmitting(false)
           return
         }
-        await addDoc(collection(db, 'alerts'), {
+        const payload = {
           ...base,
           registrationId: null,
           description: manualDescription.trim(),
@@ -168,7 +186,12 @@ export default function FamilyDashboard() {
           gender: '',
           emergencyContact: manualEmergency.trim() || profile?.phone || '',
           photoURL: '',
-        })
+        }
+        if (import.meta.env.VITE_API_BASE) {
+          await api.reportAlert(payload)
+        } else {
+          await addDoc(collection(db, 'alerts'), { ...payload, timestamp: serverTimestamp() })
+        }
       }
 
       toast.success('Missing alert submitted')

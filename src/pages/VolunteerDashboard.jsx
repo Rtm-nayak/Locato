@@ -9,6 +9,7 @@ import {
   where,
 } from 'firebase/firestore'
 import { db } from '../firebase'
+  import * as api from '../api'
 import { useAuth } from '../context/AuthContext'
 import LoadingSpinner from '../components/LoadingSpinner'
 
@@ -60,7 +61,11 @@ export default function VolunteerDashboard() {
     if (!db) return
     setBusyId(id)
     try {
-      await updateDoc(doc(db, 'alerts', id), { status: 'assisted' })
+      if (import.meta.env.VITE_API_BASE) {
+        await api.markAlertAssisted(id)
+      } else {
+        await updateDoc(doc(db, 'alerts', id), { status: 'assisted' })
+      }
       toast.success('Marked as assisted')
     } catch (err) {
       console.error(err)
