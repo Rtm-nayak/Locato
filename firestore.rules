@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // users collection: readable by authenticated users; writable by authority only
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth.token.role == 'authority';
+    }
+
+    // registrations: owners or authority can read/write
+    match /registrations/{regId} {
+      allow read: if request.auth != null && (resource.data.uid == request.auth.uid || request.auth.token.role == 'authority');
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if request.auth != null && (resource.data.uid == request.auth.uid || request.auth.token.role == 'authority');
+    }
+
+    // alerts: anyone authenticated can create; authority can read all; volunteers/family can read missing alerts
+    match /alerts/{alertId} {
+      allow create: if request.auth != null && request.resource.data.reportedBy == request.auth.uid;
+      allow read: if request.auth != null && (
+        request.auth.token.role == 'authority' ||
+        (request.auth.token.role == 'volunteer' && resource.data.status == 'missing') ||
+        (request.auth.uid == resource.data.reportedBy)
+      );
+      allow update: if request.auth != null && (
+        request.auth.token.role == 'authority' ||
+        (request.auth.token.role == 'volunteer' && request.resource.data.status == 'assisted') ||
+        request.auth.uid == resource.data.reportedBy
+      );
+      allow delete: if request.auth != null && request.auth.token.role == 'authority';
+    }
+
+  }
+}
