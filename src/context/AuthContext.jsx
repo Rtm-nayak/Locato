@@ -45,6 +45,8 @@ export function AuthProvider({ children }) {
       }
 
       let nextRole = null
+
+      // 1) Try token claims
       try {
         const token = await nextUser.getIdTokenResult(true)
         nextRole = normalizeRole(token?.claims?.role)
@@ -52,11 +54,38 @@ export function AuthProvider({ children }) {
         /* ignore */
       }
 
+      // 2) Try backend verify endpoint (if configured) to fetch authoritative role/profile
+      const apiBase = import.meta.env.VITE_API_BASE || ''
+      if (apiBase) {
+        try {
+          const idToken = await nextUser.getIdToken()
+          const res = await fetch(`${apiBase.replace(/\/$/, '')}/api/auth/verify-token`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${idToken}`,
+              'Content-Type': 'application/json',
+            },
+          })
+          if (res.ok) {
+            const payload = await res.json()
+            const d = payload?.data || {}
+            if (d) {
+              if (d.role) nextRole = nextRole || normalizeRole(d.role)
+              // merge profile if returned
+              setProfile((p) => ({ ...(p || {}), ...(d || {}) }))
+            }
+          }
+        } catch (err) {
+          // ignore network errors — fallback to Firestore lookup
+        }
+      }
+
+      // 3) Fallback: read users doc in Firestore
       try {
         const snap = await getDoc(doc(db, 'users', nextUser.uid))
         if (snap.exists()) {
           const data = snap.data()
-          setProfile(data)
+          setProfile((p) => ({ ...(p || {}), ...data }))
           if (!nextRole) nextRole = normalizeRole(data.role)
         }
       } catch {
